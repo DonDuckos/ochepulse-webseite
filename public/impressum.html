@@ -4,27 +4,61 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Impressum — OchePulse</title>
+<meta name="robots" content="index,follow">
+<meta name="theme-color" content="#08080A">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;700;800&family=Archivo+Narrow:wght@700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;700;800&family=Archivo+Narrow:wght@700&display=swap" rel="stylesheet">
 <style>
-  :root{ --ink1000:#08080A; --ink:#F4F2EE; --ink-muted:#9B988F; --amber500:#FF6A2B; --hairline:rgba(244,242,238,0.09); }
-  body{ background:var(--ink1000); color:var(--ink); font-family:"Archivo",system-ui,sans-serif; line-height:1.6; margin:0; }
-  .wrap{ max-width:640px; margin:0 auto; padding:56px 24px 80px; }
-  h1{ font-weight:800; font-size:27px; letter-spacing:-0.025em; margin:0 0 24px; }
-  .placeholder{
-    border:1px solid var(--hairline); border-radius:20px; padding:20px;
-    color:var(--ink-muted); font-size:15px;
-  }
-  a{ color:var(--amber500); text-decoration:none; }
-  .back{ display:inline-block; margin-bottom:32px; font-size:13px; color:var(--ink-muted); }
+  :root{--ink1000:#08080A;--ink900:#0E0E12;--ink800:#15151A;--amber500:#FF6A2B;--amber400:#FF8A4C;--ink:#F4F2EE;--muted:#9B988F;--faint:#6B6862;--hair:rgba(244,242,238,.09);--hair2:rgba(244,242,238,.16)}
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{background:var(--ink1000);color:var(--ink);font-family:"Archivo",system-ui,sans-serif;font-size:15px;line-height:22px;-webkit-font-smoothing:antialiased}
+  a{color:var(--amber500);text-decoration:none}
+  a:hover{color:var(--amber400)}
+  .topbar{display:flex;align-items:center;gap:24px;padding:18px 24px;max-width:1160px;margin:0 auto;border-bottom:1px solid var(--hair)}
+  .wordmark{font-family:"Archivo Narrow",sans-serif;font-weight:700;text-transform:uppercase;letter-spacing:.13em}
+  .navlink{font-size:13px;color:var(--muted)}
+  .navlink:hover{color:var(--ink)}
+  .wrap{max-width:720px;margin:0 auto;padding:56px 24px 0}
+  h1{margin:0 0 8px;font-weight:800;font-size:clamp(27px,4vw,34px);line-height:1.06;letter-spacing:-.025em}
+  .kicker{font-family:"Archivo Narrow",sans-serif;font-weight:700;text-transform:uppercase;letter-spacing:.2em;font-size:11px;line-height:14px;color:var(--amber500);margin-bottom:18px}
+  .panel{background:var(--ink800);border:1px solid var(--hair);border-radius:20px;padding:24px;margin-top:24px}
+  .panel p{margin:0;font-size:15px;line-height:24px;color:var(--muted);text-wrap:pretty}
+  .prov{font-family:"Archivo Narrow",sans-serif;font-size:11px;line-height:16px;letter-spacing:.06em;color:var(--faint);margin-top:16px}
+  footer{max-width:720px;margin:0 auto;padding:32px 24px 64px;border-top:1px solid var(--hair);margin-top:40px;display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end}
 </style>
 </head>
 <body>
-  <div class="wrap">
-    <a class="back" href="/">← Zurück</a>
-    <h1>Impressum</h1>
-    <p class="placeholder">Diese Seite ist noch nicht vollständig. Ein rechtsgültiges Impressum braucht die realen Angaben des Betreibers (Name, Anschrift, Kontakt) — die sind hier bewusst noch nicht eingetragen, statt Platzhalter als echte Angaben auszugeben.</p>
+<div class="topbar">
+  <a href="index.html" style="display:flex;align-items:center;gap:10px;flex:none;color:var(--ink)">
+    <svg viewBox="0 0 512 512" width="30" height="30" style="display:block" aria-hidden="true">
+      <circle cx="256" cy="256" r="176" fill="none" stroke="#26262F" stroke-width="26"></circle>
+      <path d="M256 80 A176 176 0 0 1 424 200" fill="none" stroke="#FF6A2B" stroke-width="26"></path>
+      <path d="M124 330 L196 330 L216 258 L256 386 L300 202 L334 330 L390 330" fill="none" stroke="#F4F2EE" stroke-width="38" stroke-linejoin="miter"></path>
+    </svg>
+    <span class="wordmark" style="font-size:15px">Ochepulse</span>
+  </a>
+  <nav style="display:flex;gap:22px;margin-left:auto;align-items:center">
+    <a class="navlink" href="impressum.html">Impressum</a>
+    <a class="navlink" href="datenschutz.html">Datenschutz</a>
+  </nav>
+</div>
+<div class="wrap">
+  <div class="kicker">Rechtliches</div>
+  <h1>Impressum</h1>
+  <div class="panel">
+    <p>Diese Seite ist noch nicht vollständig. Ein rechtsgültiges Impressum braucht die realen Angaben des Betreibers (Name, Anschrift, Kontakt) — die sind hier bewusst noch nicht eingetragen, statt Platzhalter als echte Angaben auszugeben.</p>
   </div>
+  <div class="prov">Datenlücken werden bei Ochepulse ausgesprochen, nicht gefüllt.</div>
+</div>
+<footer>
+  <div style="display:flex;flex-direction:column;gap:12px;flex:1 1 200px">
+    <a class="navlink" href="index.html">← Zurück zur Startseite</a>
+    <div class="wordmark" style="font-size:13px;color:var(--faint)">Ochepulse</div>
+  </div>
+</footer>
 </body>
 </html>

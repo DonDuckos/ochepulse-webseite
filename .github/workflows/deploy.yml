@@ -1,0 +1,101 @@
+name: Deploy website
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ochepulse-website-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.repository == 'DonDuckos/ochepulse-webseite'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check out website
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Validate deployable files
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          expected=(datenschutz.html impressum.html index.html)
+          for file in "${expected[@]}"; do
+            test -f "$file"
+            test ! -L "$file"
+            test -s "$file"
+            grep -Eiq '<!doctype[[:space:]]+html|<html([[:space:]>])' "$file"
+          done
+
+      - name: Configure restricted SSH connection
+        shell: bash
+        env:
+          DEPLOY_KEY: ${{ secrets.WEBSITE_DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.WEBSITE_DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          test -n "$DEPLOY_KEY"
+          test -n "$KNOWN_HOSTS"
+
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_KEY" > "$HOME/.ssh/website_deploy_key"
+          printf '%s\n' "$KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/website_deploy_key" "$HOME/.ssh/known_hosts"
+
+      - name: Deploy website
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ vars.WEBSITE_DEPLOY_HOST }}
+        run: |
+          set -euo pipefail
+          [[ "$DEPLOY_HOST" =~ ^[A-Za-z0-9.-]+$ ]]
+
+          tar -czf - -- datenschutz.html impressum.html index.html \
+            | ssh \
+                -i "$HOME/.ssh/website_deploy_key" \
+                -o BatchMode=yes \
+                -o ConnectTimeout=15 \
+                -o IdentitiesOnly=yes \
+                -o StrictHostKeyChecking=yes \
+                -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
+                "donduck@$DEPLOY_HOST"
+
+      - name: Verify public website
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          verify_file() {
+            local file="$1"
+            local url="$2"
+            local downloaded
+            downloaded="$(mktemp)"
+
+            curl --fail --silent --show-error \
+              --retry 5 --retry-delay 2 --retry-all-errors \
+              "$url" -o "$downloaded"
+
+            test "$(sha256sum "$file" | cut -d ' ' -f 1)" = \
+              "$(sha256sum "$downloaded" | cut -d ' ' -f 1)"
+            rm -f "$downloaded"
+          }
+
+          verify_file index.html https://ochepulse.de/
+          verify_file impressum.html https://ochepulse.de/impressum.html
+          verify_file datenschutz.html https://ochepulse.de/datenschutz.html
+
+      - name: Remove SSH key
+        if: always()
+        shell: bash
+        run: rm -f "$HOME/.ssh/website_deploy_key"

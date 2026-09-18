@@ -30,13 +30,26 @@ jobs:
         run: |
           set -euo pipefail
 
-          expected=(datenschutz.html impressum.html index.html)
-          for file in "${expected[@]}"; do
-            test -f "$file"
-            test ! -L "$file"
-            test -s "$file"
-            grep -Eiq '<!doctype[[:space:]]+html|<html([[:space:]>])' "$file"
-          done
+          test -d public
+          test -f public/index.html
+          test ! -L public/index.html
+          test -s public/index.html
+          grep -Eiq '<!doctype[[:space:]]+html|<html([[:space:]>])' public/index.html
+
+          if find public -mindepth 1 ! -type f ! -type d -print -quit | grep -q .; then
+            echo 'public/ may contain only regular files and directories.' >&2
+            exit 1
+          fi
+
+          if find public -mindepth 1 -name .git -print -quit | grep -q .; then
+            echo 'A nested .git directory may not be deployed.' >&2
+            exit 1
+          fi
+
+          file_count="$(find public -type f | wc -l)"
+          extracted_bytes="$(du -sb public | cut -f 1)"
+          (( file_count > 0 && file_count <= 5000 ))
+          (( extracted_bytes <= 209715200 ))
 
       - name: Configure restricted SSH connection
         shell: bash
@@ -61,39 +74,53 @@ jobs:
           set -euo pipefail
           [[ "$DEPLOY_HOST" =~ ^[A-Za-z0-9.-]+$ ]]
 
-          tar -czf - -- datenschutz.html impressum.html index.html \
-            | ssh \
-                -i "$HOME/.ssh/website_deploy_key" \
-                -o BatchMode=yes \
-                -o ConnectTimeout=15 \
-                -o IdentitiesOnly=yes \
-                -o StrictHostKeyChecking=yes \
-                -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
-                "donduck@$DEPLOY_HOST"
+          manifest_digest() {
+            local root="$1"
+            (
+              cd "$root"
+              while IFS= read -r -d '' file; do
+                printf '%s\0' "$file"
+                sha256sum "$file" | cut -d ' ' -f 1 | tr -d '\n'
+                printf '\0'
+              done < <(find . -type f -print0 | sort -z)
+            ) | sha256sum | cut -d ' ' -f 1
+          }
+
+          local_manifest="$(manifest_digest public)"
+          deploy_output="$(
+            tar -C public -czf - . \
+              | ssh \
+                  -i "$HOME/.ssh/website_deploy_key" \
+                  -o BatchMode=yes \
+                  -o ConnectTimeout=15 \
+                  -o IdentitiesOnly=yes \
+                  -o StrictHostKeyChecking=yes \
+                  -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
+                  "donduck@$DEPLOY_HOST"
+          )"
+          printf '%s\n' "$deploy_output"
+
+          remote_manifest="$(
+            printf '%s\n' "$deploy_output" \
+              | sed -n 's/^DEPLOYED_MANIFEST_SHA256=//p' \
+              | tail -n 1
+          )"
+          test -n "$remote_manifest"
+          test "$local_manifest" = "$remote_manifest"
 
       - name: Verify public website
         shell: bash
         run: |
           set -euo pipefail
+          downloaded="$(mktemp)"
+          trap 'rm -f "$downloaded"' EXIT
 
-          verify_file() {
-            local file="$1"
-            local url="$2"
-            local downloaded
-            downloaded="$(mktemp)"
+          curl --fail --silent --show-error \
+            --retry 5 --retry-delay 2 --retry-all-errors \
+            https://ochepulse.de/ -o "$downloaded"
 
-            curl --fail --silent --show-error \
-              --retry 5 --retry-delay 2 --retry-all-errors \
-              "$url" -o "$downloaded"
-
-            test "$(sha256sum "$file" | cut -d ' ' -f 1)" = \
-              "$(sha256sum "$downloaded" | cut -d ' ' -f 1)"
-            rm -f "$downloaded"
-          }
-
-          verify_file index.html https://ochepulse.de/
-          verify_file impressum.html https://ochepulse.de/impressum.html
-          verify_file datenschutz.html https://ochepulse.de/datenschutz.html
+          test "$(sha256sum public/index.html | cut -d ' ' -f 1)" = \
+            "$(sha256sum "$downloaded" | cut -d ' ' -f 1)"
 
       - name: Remove SSH key
         if: always()

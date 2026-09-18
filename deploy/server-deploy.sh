@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 
 # Forced command for the dedicated ochepulse-webseite GitHub Actions key.
-# It accepts a gzip-compressed tar archive on stdin and publishes exactly the
-# three website files. The SSH key is not allowed to execute arbitrary input.
+# It accepts a gzip-compressed tar archive on stdin and mirrors its validated
+# static files into the website root. The SSH key cannot execute arbitrary
+# commands.
 
 set -Eeuo pipefail
 
@@ -11,7 +12,9 @@ export PATH
 umask 077
 
 readonly WEB_ROOT=/srv/ochepulse/web
-readonly EXPECTED_FILES=(datenschutz.html impressum.html index.html)
+readonly MAX_ARCHIVE_BYTES=52428800
+readonly MAX_EXTRACTED_BYTES=209715200
+readonly MAX_FILE_COUNT=5000
 
 if [[ -n "${SSH_ORIGINAL_COMMAND:-}" ]]; then
   echo "Remote commands are not permitted for this deployment key." >&2
@@ -36,11 +39,11 @@ trap cleanup EXIT
 
 mkdir -m 700 "$incoming" "$backup"
 
-# The current site is only a few kilobytes. Keep a deliberately generous but
-# bounded ceiling so a leaked key cannot fill the server disk through stdin.
-timeout 30s head -c 1048577 > "$archive"
-if (( $(stat -c '%s' "$archive") > 1048576 )); then
-  echo "Deployment archive exceeds the 1 MiB limit." >&2
+# Keep a bounded ceiling so a leaked key cannot fill the server disk through
+# stdin. Extracted size and file count are checked separately below.
+timeout 60s head -c "$((MAX_ARCHIVE_BYTES + 1))" > "$archive"
+if (( $(stat -c '%s' "$archive") > MAX_ARCHIVE_BYTES )); then
+  echo "Deployment archive exceeds the 50 MiB compressed limit." >&2
   exit 65
 fi
 
@@ -49,60 +52,57 @@ tar -xzf "$archive" \
   --no-same-owner \
   --no-same-permissions
 
-mapfile -t actual_files < <(
-  find "$incoming" -mindepth 1 -maxdepth 1 -type f -printf '%f\n' | sort
-)
-
-if (( ${#actual_files[@]} != ${#EXPECTED_FILES[@]} )); then
-  echo "Deployment archive does not contain the expected file set." >&2
-  exit 65
-fi
-
-for index in "${!EXPECTED_FILES[@]}"; do
-  if [[ "${actual_files[$index]}" != "${EXPECTED_FILES[$index]}" ]]; then
-    echo "Deployment archive contains an unexpected file." >&2
-    exit 65
-  fi
-done
-
-if find "$incoming" -mindepth 1 -maxdepth 1 ! -type f -print -quit | grep -q .; then
+if find "$incoming" -mindepth 1 ! -type f ! -type d -print -quit | grep -q .; then
   echo "Deployment archive contains a non-regular entry." >&2
   exit 65
 fi
 
-for file in "${EXPECTED_FILES[@]}"; do
-  test -s "$incoming/$file"
-  grep -Eiq '<!doctype[[:space:]]+html|<html([[:space:]>])' "$incoming/$file"
+if find "$incoming" -mindepth 1 -name .git -print -quit | grep -q .; then
+  echo "Deployment archive contains a nested .git directory." >&2
+  exit 65
+fi
 
-  if [[ -f "$WEB_ROOT/$file" ]]; then
-    cp -p -- "$WEB_ROOT/$file" "$backup/$file"
-  else
-    touch "$backup/.missing-$file"
-  fi
-done
+test -f "$incoming/index.html"
+test -s "$incoming/index.html"
+grep -Eiq '<!doctype[[:space:]]+html|<html([[:space:]>])' "$incoming/index.html"
+
+file_count="$(find "$incoming" -type f | wc -l)"
+extracted_bytes="$(du -sb "$incoming" | cut -f 1)"
+if (( file_count == 0 || file_count > MAX_FILE_COUNT )); then
+  echo "Deployment file count is outside the permitted range." >&2
+  exit 65
+fi
+if (( extracted_bytes > MAX_EXTRACTED_BYTES )); then
+  echo "Deployment exceeds the 200 MiB extracted limit." >&2
+  exit 65
+fi
+
+rsync -a -- "$WEB_ROOT/" "$backup/"
 
 rollback_needed=true
 rollback() {
   if [[ "$rollback_needed" == true ]]; then
-    for file in "${EXPECTED_FILES[@]}"; do
-      rm -f -- "$WEB_ROOT/.$file.new"
-      if [[ -f "$backup/$file" ]]; then
-        install -m 0644 -- "$backup/$file" "$WEB_ROOT/$file"
-      elif [[ -f "$backup/.missing-$file" ]]; then
-        rm -f -- "$WEB_ROOT/$file"
-      fi
-    done
+    rsync -a --delete --chmod=D755,F644 -- "$backup/" "$WEB_ROOT/"
   fi
 }
 trap 'rollback; cleanup' EXIT
 
-for file in "${EXPECTED_FILES[@]}"; do
-  install -m 0644 -- "$incoming/$file" "$WEB_ROOT/.$file.new"
-done
+rsync -a --delete --chmod=D755,F644 -- "$incoming/" "$WEB_ROOT/"
 
-for file in "${EXPECTED_FILES[@]}"; do
-  mv -f -- "$WEB_ROOT/.$file.new" "$WEB_ROOT/$file"
-done
+manifest_digest() {
+  local root="$1"
+  (
+    cd "$root"
+    while IFS= read -r -d '' file; do
+      printf '%s\0' "$file"
+      sha256sum "$file" | cut -d ' ' -f 1 | tr -d '\n'
+      printf '\0'
+    done < <(find . -type f -print0 | sort -z)
+  ) | sha256sum | cut -d ' ' -f 1
+}
 
+deployed_manifest="$(manifest_digest "$WEB_ROOT")"
 rollback_needed=false
+
+printf 'DEPLOYED_MANIFEST_SHA256=%s\n' "$deployed_manifest"
 echo "OchePulse website deployed successfully."
